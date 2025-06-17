@@ -1,0 +1,17 @@
+// POST http://localhost:5001/predict
+// body raw - json
+{
+  "input": {
+    "PassengerId": 897,
+    "Pclass": 1,
+    "Name": "Wilkes, Mrs. James (Ellen Needs)",
+    "Sex": "male",
+    "Age": 26,
+    "SibSp": 1,
+    "Parch": 0,
+    "Ticket": "363272",
+    "Fare": 7.0,
+    "Cabin": null,
+    "Embarked": "C"
+  }
+}
