@@ -10,9 +10,10 @@ from kedro.pipeline import node
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "LoanID" in df.columns:
         df = df.drop(columns=["LoanID"])
-    bool_cols = ["HasMortgage", "HasDependents", "HasCoSigner"]
-    df[bool_cols] = df[bool_cols].replace({"Yes": 1, "No": 0})
-    cat_cols = ["Education", "EmploymentType", "MaritalStatus", "LoanPurpose"]
+    bool_cols = [col for col in ["HasMortgage", "HasDependents", "HasCoSigner"] if col in df.columns]
+    if bool_cols:
+        df[bool_cols] = df[bool_cols].replace({"Yes": 1, "No": 0})
+    cat_cols = [col for col in ["Education", "EmploymentType", "MaritalStatus", "LoanPurpose"] if col in df.columns]
     for col in cat_cols:
         df[col] = df[col].astype("category")
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
@@ -34,21 +35,24 @@ def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
 def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(thresh=int(0.5 * len(df.columns)))
     for col in df.columns:
-        if df[col].dtype.name == 'category':
-            df[col] = df[col].fillna(df[col].mode()[0])
-        else:
+        if pd.api.types.is_numeric_dtype(df[col]):
             df[col] = df[col].fillna(df[col].median())
+        else:
+            df[col] = df[col].fillna(df[col].mode()[0])
     return df
 
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    df["loan_to_income"] = df["loanamount"] / (df["income"] + 1)
-    df["income_per_credit_line"] = df["income"] / (df["numcreditlines"] + 1)
-    df["credit_score_band"] = pd.cut(
-        df["creditscore"],
-        bins=[300, 580, 670, 740, 800, 850],
-        labels=["Poor", "Fair", "Good", "Very Good", "Excellent"]
-    ).astype("category")
+    if all(col in df.columns for col in ["loanamount", "income"]):
+        df["loan_to_income"] = df["loanamount"] / (df["income"] + 1)
+    if all(col in df.columns for col in ["income", "numcreditlines"]):
+        df["income_per_credit_line"] = df["income"] / (df["numcreditlines"] + 1)
+    if "creditscore" in df.columns:
+        df["credit_score_band"] = pd.cut(
+            df["creditscore"],
+            bins=[300, 580, 670, 740, 800, 850],
+            labels=["Poor", "Fair", "Good", "Very Good", "Excellent"]
+        ).astype("category")
     return df
 
 
