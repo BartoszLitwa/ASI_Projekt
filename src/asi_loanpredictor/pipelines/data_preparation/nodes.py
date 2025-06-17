@@ -8,7 +8,8 @@ from kedro.pipeline import node
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.drop(columns=["LoanID"])
+    if "LoanID" in df.columns:
+        df = df.drop(columns=["LoanID"])
     bool_cols = ["HasMortgage", "HasDependents", "HasCoSigner"]
     df[bool_cols] = df[bool_cols].replace({"Yes": 1, "No": 0})
     cat_cols = ["Education", "EmploymentType", "MaritalStatus", "LoanPurpose"]

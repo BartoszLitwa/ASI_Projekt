@@ -1,13 +1,6 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import (
-    create_model_input_table,
-    load_shuttles_to_csv,
-    preprocess_companies,
-    preprocess_reviews,
-    preprocess_shuttles,
-    feature_engineering,
-)
+from .nodes import feature_engineering
 
 
 def create_pipeline(**kwargs) -> Pipeline:

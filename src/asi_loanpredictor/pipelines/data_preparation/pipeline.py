@@ -13,7 +13,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=split_train_test,
             inputs={
-                "data": "loan_raw",
+                "data": "loan_data",
                 "test_size": "params:split_train_test.test_size",
                 "random_state": "params:split_train_test.random_state"
             },

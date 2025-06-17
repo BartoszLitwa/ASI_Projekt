@@ -39,32 +39,32 @@
 # (transcoding), templating and a way to reuse arguments that are frequently repeated. See more here:
 # https://docs.kedro.org/en/stable/data/data_catalog.html
 
-loan_raw:
-  type: pandas.CSVDataSet
+loan_data:
+  type: pandas.CSVDataset
   filepath: data/01_raw/loan_data.csv
 
 loan_train:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_train.csv
 
 loan_test:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_test.csv
 
 loan_cleaned:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_cleaned.csv
 
 loan_features:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/04_feature/loan_features.csv
 
 loan_model_input:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/05_model_input/loan_model_input.csv
 
 loan_model:
-  type: pickle.PickleDataSet
+  type: pickle.PickleDataset
   filepath: data/06_models/loan_model.pkl
 
 cleaned_data:
@@ -96,24 +96,24 @@ test_data:
   filepath: data/05_model_input/test.parquet
 
 loan_train_cleaned:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_train_cleaned.csv
 
 loan_test_cleaned:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_test_cleaned.csv
 
 loan_train_features:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/04_feature/loan_train_features.csv
 
 loan_test_features:
-  type: pandas.CSVDataSet
+  type: pandas.CSVDataset
   filepath: data/04_feature/loan_test_features.csv
 
 model_features:
-  type: pickle.PickleDataSet
+  type: pickle.PickleDataset
   filepath: data/06_models/model_features.pkl
 
 model_accuracy:
-  type: MemoryDataSet
+  type: MemoryDataset
