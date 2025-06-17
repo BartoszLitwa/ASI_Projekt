@@ -104,37 +104,130 @@ To automatically strip out all output cell contents before committing to `git`, 
 
 # Loan Prediction Kedro Project
 
-## 1. Data Preparation and Model Training
+This project uses the Kaggle Loan Prediction dataset to build a machine learning pipeline with Kedro, and provides a Streamlit UI for model inference, all containerized with Docker/Podman.
 
-1. Place the Kaggle dataset as `data/01_raw/loan_data.csv`.
-2. Run the Kedro pipeline to clean, split, process, and train the model:
+---
+
+## 1. Environment Setup
+
+### 1.1. Clone the Repository
+```bash
+git clone <your-repo-url>
+cd ASI_Projekt
+```
+
+### 1.2. Create and Activate Conda Environment
+```bash
+conda env create -f environment.yml
+conda activate asi_projekt
+```
+
+### 1.3. Deactivate Conda Environment
+```bash
+conda deactivate
+```
+
+### 1.4. Install Project Dependencies (if not done by environment.yml)
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 2. Prepare the Data
+
+1. **Download the Kaggle dataset** from [Kaggle Loan Prediction Dataset](https://www.kaggle.com/datasets/ethicalstar/loan-prediction).
+2. **Place the CSV file** as:
+   ```
+   data/01_raw/loan_data.csv
+   ```
+
+---
+
+## 3. Run the Kedro Pipeline
+
+This will:
+- Split the data into train/test
+- Clean and preprocess the data
+- Perform feature engineering
+- Train and evaluate a model
+- Save the model and features for inference
 
 ```bash
 kedro run
 ```
 
-## 2. Running the Streamlit App (Docker)
+Outputs (model and features) will be saved in `data/06_models/`.
 
-1. Build the Docker image (using Podman or Docker):
+---
 
+## 4. Run the Streamlit App (Docker/Podman)
+
+### 4.1. Build the Docker Image
+```bash
+cd docker
+podman build -t loan-predictor-app .
+```
+*Or use `docker build -t loan-predictor-app .` if you use Docker.*
+
+### 4.2. Run the Container
+```bash
+podman run -p 8501:8501 -v ../data/06_models:/app/data/06_models loan-predictor-app
+```
+*Or use `docker run -p 8501:8501 -v ../data/06_models:/app/data/06_models loan-predictor-app` if you use Docker.*
+
+### 4.3. Access the App
+Open your browser at [http://localhost:8501](http://localhost:8501)
+
+---
+
+## 5. Project Structure
+
+- `data/01_raw/loan_data.csv`: Raw Kaggle data
+- `src/asi_loanpredictor/pipelines/`: Kedro pipelines for data preparation, processing, and model training
+- `docker/`: Streamlit app and Dockerfile
+- `data/06_models/`: Trained model and features for inference
+
+---
+
+## 6. Useful Commands
+
+### Activate Environment
+```bash
+conda activate asi_projekt
+```
+
+### Deactivate Environment
+```bash
+conda deactivate
+```
+
+### Run Kedro Pipeline
+```bash
+kedro run
+```
+
+### Build Docker Image
 ```bash
 cd docker
 podman build -t loan-predictor-app .
 ```
 
-2. Run the container:
-
+### Run Docker Container
 ```bash
 podman run -p 8501:8501 -v ../data/06_models:/app/data/06_models loan-predictor-app
 ```
 
-3. Open your browser at [http://localhost:8501](http://localhost:8501)
+---
 
-## 3. Project Structure
+## 7. Notes
+- **Always run the Kedro pipeline before building/running the Docker image** to ensure the model and features are available for the Streamlit app.
+- You can further customize the pipeline or Streamlit UI as needed.
+- For troubleshooting, check the logs/output of both Kedro and the Streamlit app.
 
-- `data/01_raw/loan_data.csv`: Raw Kaggle data
-- `src/asi_loanpredictor/pipelines/`: Kedro pipelines for data prep, processing, and science
-- `docker/`: Streamlit app and Dockerfile
+---
 
-## 4. Notes
-- Make sure to run the Kedro pipeline before building the Docker image, so the trained model and features are available for the Streamlit app.
+## 8. References
+- [Kedro Documentation](https://docs.kedro.org/)
+- [Streamlit Documentation](https://docs.streamlit.io/)
+- [Kaggle Loan Prediction Dataset](https://www.kaggle.com/datasets/ethicalstar/loan-prediction)
