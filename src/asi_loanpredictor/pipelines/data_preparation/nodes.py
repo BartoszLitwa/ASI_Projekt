@@ -57,8 +57,11 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def balance_dataset(df: pd.DataFrame) -> pd.DataFrame:
-    X = df.drop("default", axis=1)
-    y = df["default"].map({"No": 0, "Yes": 1})
+    target_col = 'Risk_Flag' if 'Risk_Flag' in df.columns else None
+    if not target_col:
+        raise KeyError("'Risk_Flag' not found in data for balancing.")
+    X = df.drop(target_col, axis=1)
+    y = df[target_col]
 
     # Check for and clean missing values or infs
     X = X.replace([float("inf"), float("-inf")], pd.NA)
@@ -71,19 +74,23 @@ def balance_dataset(df: pd.DataFrame) -> pd.DataFrame:
     X_res, y_res = smote.fit_resample(X_encoded, y)
 
     df_balanced = pd.DataFrame(X_res, columns=X_encoded.columns)
-    df_balanced["default"] = y_res
+    df_balanced[target_col] = y_res
     return df_balanced
 
 
 def split_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    return train_test_split(df, test_size=0.2, stratify=df["default"], random_state=42)
+    target_col = 'Risk_Flag' if 'Risk_Flag' in df.columns else None
+    if not target_col:
+        raise KeyError("'Risk_Flag' not found in data for splitting.")
+    return train_test_split(df, test_size=0.2, stratify=df[target_col], random_state=42)
 
 
 def split_train_test(data: pd.DataFrame, test_size: float = 0.2, random_state: int = 42):
     """
     Split the raw data into train and test sets.
     """
-    train, test = train_test_split(data, test_size=test_size, random_state=random_state, stratify=data['Loan_Status'] if 'Loan_Status' in data.columns else None)
+    target_col = 'Risk_Flag' if 'Risk_Flag' in data.columns else None
+    train, test = train_test_split(data, test_size=test_size, random_state=random_state, stratify=data[target_col] if target_col else None)
     return train, test
 
 
@@ -99,7 +106,7 @@ def clean_loan_data(train: pd.DataFrame, test: pd.DataFrame):
         for col in df.select_dtypes(include=['number']).columns:
             df[col] = df[col].fillna(df[col].median())
     # Example: encode categoricals using pandas get_dummies (except target)
-    target_col = 'Loan_Status' if 'Loan_Status' in train.columns else None
+    target_col = 'Risk_Flag' if 'Risk_Flag' in train.columns else None
     train_features = train.drop(columns=[target_col]) if target_col else train.copy()
     test_features = test.drop(columns=[target_col]) if target_col and target_col in test.columns else test.copy()
     all_data = pd.concat([train_features, test_features], axis=0)

@@ -193,6 +193,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Ignore all generated pickle files in data directories
+data/**/*.pkl
+
 # Ignore all generated CSV files in data directories
 data/**/*.csv
 
