@@ -1,4 +1,4 @@
-flask
+streamlit
 scikit-learn
-joblib
 pandas
+joblib 

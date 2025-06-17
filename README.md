@@ -101,3 +101,40 @@ To automatically strip out all output cell contents before committing to `git`, 
 ## Package your Kedro project
 
 [Further information about building project documentation and packaging your project](https://docs.kedro.org/en/stable/tutorial/package_a_project.html)
+
+# Loan Prediction Kedro Project
+
+## 1. Data Preparation and Model Training
+
+1. Place the Kaggle dataset as `data/01_raw/loan_data.csv`.
+2. Run the Kedro pipeline to clean, split, process, and train the model:
+
+```bash
+kedro run
+```
+
+## 2. Running the Streamlit App (Docker)
+
+1. Build the Docker image (using Podman or Docker):
+
+```bash
+cd docker
+podman build -t loan-predictor-app .
+```
+
+2. Run the container:
+
+```bash
+podman run -p 8501:8501 -v ../data/06_models:/app/data/06_models loan-predictor-app
+```
+
+3. Open your browser at [http://localhost:8501](http://localhost:8501)
+
+## 3. Project Structure
+
+- `data/01_raw/loan_data.csv`: Raw Kaggle data
+- `src/asi_loanpredictor/pipelines/`: Kedro pipelines for data prep, processing, and science
+- `docker/`: Streamlit app and Dockerfile
+
+## 4. Notes
+- Make sure to run the Kedro pipeline before building the Docker image, so the trained model and features are available for the Streamlit app.
