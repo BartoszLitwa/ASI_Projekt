@@ -57,9 +57,9 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def balance_dataset(df: pd.DataFrame) -> pd.DataFrame:
-    target_col = 'Risk_Flag' if 'Risk_Flag' in df.columns else None
+    target_col = 'risk_flag' if 'risk_flag' in df.columns else None
     if not target_col:
-        raise KeyError("'Risk_Flag' not found in data for balancing.")
+        raise KeyError("'risk_flag' not found in data for balancing.")
     X = df.drop(target_col, axis=1)
     y = df[target_col]
 
@@ -79,9 +79,9 @@ def balance_dataset(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def split_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    target_col = 'Risk_Flag' if 'Risk_Flag' in df.columns else None
+    target_col = 'risk_flag' if 'risk_flag' in df.columns else None
     if not target_col:
-        raise KeyError("'Risk_Flag' not found in data for splitting.")
+        raise KeyError("'risk_flag' not found in data for splitting.")
     return train_test_split(df, test_size=0.2, stratify=df[target_col], random_state=42)
 
 
@@ -95,26 +95,22 @@ def split_train_test(data: pd.DataFrame, test_size: float = 0.2, random_state: i
 
 
 def clean_loan_data(train: pd.DataFrame, test: pd.DataFrame):
-    """
-    Clean the train and test data: handle missing values, encode categoricals, etc.
-    Returns cleaned train and test DataFrames.
-    """
-    # Example: fill missing values with mode for categoricals, median for numerics
+    # Drop high-cardinality and non-numeric columns for simplicity
+    drop_cols = [col for col in ['Id', 'Profession', 'CITY', 'STATE'] if col in train.columns]
+    train = train.drop(columns=drop_cols)
+    test = test.drop(columns=drop_cols)
+    # Fill missing values
     for df in [train, test]:
         for col in df.select_dtypes(include=['object']).columns:
             df[col] = df[col].fillna(df[col].mode()[0])
         for col in df.select_dtypes(include=['number']).columns:
             df[col] = df[col].fillna(df[col].median())
-    # Example: encode categoricals using pandas get_dummies (except target)
-    target_col = 'Risk_Flag' if 'Risk_Flag' in train.columns else None
-    train_features = train.drop(columns=[target_col]) if target_col else train.copy()
-    test_features = test.drop(columns=[target_col]) if target_col and target_col in test.columns else test.copy()
-    all_data = pd.concat([train_features, test_features], axis=0)
-    all_data_encoded = pd.get_dummies(all_data)
-    train_encoded = all_data_encoded.iloc[:len(train_features), :]
-    test_encoded = all_data_encoded.iloc[len(train_features):, :]
-    if target_col:
-        train_encoded[target_col] = train[target_col].values
-        if target_col in test.columns:
-            test_encoded[target_col] = test[target_col].values
-    return train_encoded, test_encoded
+    # Only one-hot encode a few key categoricals
+    cat_cols = [col for col in ['Married/Single', 'House_Ownership', 'Car_Ownership'] if col in train.columns]
+    train = pd.get_dummies(train, columns=cat_cols, drop_first=True)
+    test = pd.get_dummies(test, columns=cat_cols, drop_first=True)
+    # Align columns
+    train, test = train.align(test, join='left', axis=1, fill_value=0)
+    return train, test
+
+# Remove advanced/unused nodes for simplicity
