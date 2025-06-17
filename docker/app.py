@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import joblib
 import os
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.utils.validation import check_is_fitted
 
 MODEL_PATH = os.path.join('data/06_models', 'loan_model.pkl')
 FEATURES_PATH = os.path.join('data/06_models', 'model_features.pkl')
@@ -51,7 +53,13 @@ def safe_bool(val, default):
         return bool(int(default))
 
 def load_model():
-    return joblib.load(MODEL_PATH)
+    model = joblib.load(MODEL_PATH)
+    try:
+        check_is_fitted(model)
+        return model
+    except Exception:
+        st.error("Model is not fitted. Please run 'kedro run' to train the model and then restart the container.", icon="🚨")
+        st.stop()
 
 def load_features():
     return joblib.load(FEATURES_PATH)
@@ -65,7 +73,12 @@ def main():
     st.set_page_config(page_title='Loan Approval Prediction', layout='centered')
     st.title('Loan Approval Prediction')
     st.markdown('---')
+    
+    # Load model and features safely
     model = load_model()
+    if not model:
+        return # Stop execution if model loading failed
+    
     features = load_features()
     importances = get_feature_importances(model, features)
 
