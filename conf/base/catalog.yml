@@ -44,34 +44,47 @@ loan_data:
   type: pandas.CSVDataset
   filepath: data/01_raw/loan_data.csv
 
-# Intermediate data
-loan_train:
+# Data preparation outputs
+train_data:
   type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_train.csv
-
-loan_test:
+  save_args:
+    index: false
+    
+test_data:
   type: pandas.CSVDataset
   filepath: data/02_intermediate/loan_test.csv
+  save_args:
+    index: false
 
-loan_train_cleaned:
+# Data cleaning outputs
+train_cleaned:
   type: pandas.CSVDataset
-  filepath: data/02_intermediate/loan_train_cleaned.csv
-
-loan_test_cleaned:
+  filepath: data/03_primary/loan_train_cleaned.csv
+  save_args:
+    index: false
+    
+test_cleaned:
   type: pandas.CSVDataset
-  filepath: data/02_intermediate/loan_test_cleaned.csv
+  filepath: data/03_primary/loan_test_cleaned.csv
+  save_args:
+    index: false
 
-# Feature data
-loan_train_features:
+# Feature engineering outputs
+train_features:
   type: pandas.CSVDataset
   filepath: data/04_feature/loan_train_features.csv
-
-loan_test_features:
+  save_args:
+    index: false
+    
+test_features:
   type: pandas.CSVDataset
   filepath: data/04_feature/loan_test_features.csv
+  save_args:
+    index: false
 
 # Model outputs
-loan_model:
+model:
   type: pickle.PickleDataset
   filepath: data/06_models/loan_model.pkl
 
@@ -79,15 +92,7 @@ model_features:
   type: pickle.PickleDataset
   filepath: data/06_models/model_features.pkl
 
-# New model artifacts
-feature_importance:
-  type: pandas.CSVDataset
-  filepath: data/06_models/feature_importance.csv
-
-cv_scores:
-  type: json.JSONDataset
-  filepath: data/06_models/cv_scores.json
-
+# Evaluation outputs
 model_metrics:
   type: json.JSONDataset
   filepath: data/06_models/model_metrics.json
@@ -124,14 +129,6 @@ featured_data:
 balanced_data:
   type: pandas.ParquetDataset
   filepath: data/03_primary/balanced.parquet
-
-train_data:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/train.parquet
-
-test_data:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/test.parquet
 
 model_accuracy:
   type: MemoryDataset

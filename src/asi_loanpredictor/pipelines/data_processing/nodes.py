@@ -1,107 +1,82 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
 import logging
 
 logger = logging.getLogger(__name__)
 
-def feature_engineering(train: pd.DataFrame, test: pd.DataFrame, parameters: dict = None):
+def feature_engineering(train: pd.DataFrame, test: pd.DataFrame):
     """
-    Enhanced feature engineering for loan prediction.
-    Creates meaningful features from the raw data.
+    Create essential engineered features that are most predictive for loan risk.
+    Focus on simplicity and interpretability.
     """
-    # Get feature engineering parameters
-    if parameters is None:
-        parameters = {}
-    fe_params = parameters.get('feature_engineering', {})
+    logger.info(f"Starting feature engineering. Train: {train.shape}, Test: {test.shape}")
     
-    logger.info(f"Starting feature engineering. Train shape: {train.shape}, Test shape: {test.shape}")
+    train_feat = train.copy()
+    test_feat = test.copy()
     
-    # Work on copies to avoid modifying original data
-    train_processed = train.copy()
-    test_processed = test.copy()
+    # Validate required columns exist
+    required_cols = ['Income', 'Age', 'Experience']
+    missing_cols = [col for col in required_cols if col not in train_feat.columns]
+    if missing_cols:
+        logger.warning(f"Missing required columns: {missing_cols}")
+        return train_feat, test_feat
     
-    for df in [train_processed, test_processed]:
-        # 1. Income-based features
-        if 'Income' in df.columns and 'CURRENT_JOB_YRS' in df.columns:
-            df['income_per_year_of_job'] = df['Income'] / (df['CURRENT_JOB_YRS'] + 1)
-            df['income_stability'] = df['Income'] * df['CURRENT_JOB_YRS']
+    for df in [train_feat, test_feat]:
+        # 1. Income-related features (most important for loan decisions)
+        df['income_thousands'] = df['Income'] / 1000  # Scale down for better model performance
+        df['log_income'] = np.log1p(df['Income'])  # Log transform for skewed income distribution
         
-        # 2. Age-based features
-        if 'Age' in df.columns:
-            # Age buckets
-            age_bins = fe_params.get('age_bins', [18, 30, 45, 60, 100])
-            df['age_bucket'] = pd.cut(df['Age'], bins=age_bins, labels=['young', 'middle', 'senior', 'elderly'][:len(age_bins)-1])
-            
-            # Age-Experience relationship
-            if 'Experience' in df.columns:
-                df['experience_age_ratio'] = df['Experience'] / df['Age']
-                df['early_career'] = (df['Experience'] < 5).astype(int)
-                df['experienced'] = (df['Experience'] > 15).astype(int)
+        # 2. Age and experience ratios
+        df['experience_age_ratio'] = df['Experience'] / (df['Age'] + 1)  # Add 1 to avoid division by zero
+        df['income_per_age'] = df['Income'] / (df['Age'] + 1)
         
-        # 3. Experience-based features
-        if 'Experience' in df.columns:
-            exp_bins = fe_params.get('experience_bins', [0, 2, 5, 10, 20, 50])
-            df['experience_level'] = pd.cut(df['Experience'], bins=exp_bins, 
-                                          labels=['novice', 'junior', 'mid', 'senior', 'expert'][:len(exp_bins)-1])
+        # 3. Employment stability indicators
+        if 'CURRENT_JOB_YRS' in df.columns:
+            df['job_stability'] = df['CURRENT_JOB_YRS'] / (df['Experience'] + 1)
+            df['income_per_job_year'] = df['Income'] / (df['CURRENT_JOB_YRS'] + 1)
         
-        # 4. Housing-related features
+        # 4. Life stage indicators (simple and interpretable)
+        df['young_professional'] = ((df['Age'] < 30) & (df['Experience'] > 2)).astype(int)
+        df['experienced_worker'] = (df['Experience'] > 15).astype(int)
+        df['early_career'] = (df['Experience'] < 3).astype(int)
+        
+        # 5. Financial capacity indicators
+        df['high_income'] = (df['Income'] > 8000000).astype(int)  # Above 8L
+        df['low_income'] = (df['Income'] < 3000000).astype(int)   # Below 3L
+        
+        # 6. Experience-age consistency check
+        df['experience_age_gap'] = df['Age'] - df['Experience'] - 18  # Assuming work starts at 18
+        df['unusual_experience'] = (df['experience_age_gap'] < 0).astype(int)  # Started work too early?
+        
+        # 7. Housing stability (if available)
         if 'CURRENT_HOUSE_YRS' in df.columns:
-            df['housing_stability'] = df['CURRENT_HOUSE_YRS'] > 5
-            
-        # 5. Income bins for better categorical representation
-        if 'Income' in df.columns:
-            income_bins = fe_params.get('income_bins', [0, 30000, 60000, 100000, 150000, float('inf')])
-            df['income_bracket'] = pd.cut(df['Income'], bins=income_bins, 
-                                        labels=['low', 'medium', 'high', 'very_high', 'wealthy'][:len(income_bins)-1])
+            df['housing_stability'] = (df['CURRENT_HOUSE_YRS'] > 5).astype(int)
+            df['recently_moved'] = (df['CURRENT_HOUSE_YRS'] < 2).astype(int)
+    
+    # 8. Income percentiles (calculated from training data only to avoid leakage)
+    income_percentiles = train_feat['Income'].quantile([0.25, 0.5, 0.75]).values
+    
+    for df in [train_feat, test_feat]:
+        df['income_quartile_1'] = (df['Income'] <= income_percentiles[0]).astype(int)
+        df['income_quartile_2'] = ((df['Income'] > income_percentiles[0]) & 
+                                 (df['Income'] <= income_percentiles[1])).astype(int)
+        df['income_quartile_3'] = ((df['Income'] > income_percentiles[1]) & 
+                                 (df['Income'] <= income_percentiles[2])).astype(int)
+        df['income_quartile_4'] = (df['Income'] > income_percentiles[2]).astype(int)
+    
+    # 9. Clean up any inf/nan values created during feature engineering
+    for df in [train_feat, test_feat]:
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
         
-        # 6. Marital status and ownership interactions
-        if 'Married/Single' in df.columns and 'House_Ownership' in df.columns:
-            df['married_homeowner'] = ((df['Married/Single'] == 'married') & 
-                                     (df['House_Ownership'] == 'owned')).astype(int)
-        
-        # 7. Risk indicators
-        if 'Age' in df.columns and 'Experience' in df.columns:
-            df['age_experience_mismatch'] = (df['Age'] - df['Experience'] < 18).astype(int)
-        
-        if 'Income' in df.columns and 'Age' in df.columns:
-            df['income_age_ratio'] = df['Income'] / df['Age']
+        # Fill any new NaN values with median/mode
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                continue  # Skip non-numeric columns
+            if df[col].isnull().sum() > 0:
+                fill_value = df[col].median() if df[col].dtype in ['int64', 'float64'] else 0
+                df[col].fillna(fill_value, inplace=True)
     
-    # Handle categorical variables with proper encoding
-    categorical_cols = []
+    logger.info(f"Feature engineering complete. Train: {train_feat.shape}, Test: {test_feat.shape}")
+    logger.info(f"New features created: {set(train_feat.columns) - set(train.columns)}")
     
-    # One-hot encode key categorical variables
-    for col in ['Married/Single', 'House_Ownership', 'Car_Ownership']:
-        if col in train_processed.columns:
-            categorical_cols.append(col)
-    
-    # Add the new categorical features
-    for col in ['age_bucket', 'experience_level', 'income_bracket']:
-        if col in train_processed.columns:
-            categorical_cols.append(col)
-    
-    # Apply one-hot encoding
-    train_encoded = pd.get_dummies(train_processed, columns=categorical_cols, drop_first=True)
-    test_encoded = pd.get_dummies(test_processed, columns=categorical_cols, drop_first=True)
-    
-    # Align columns between train and test
-    train_encoded, test_encoded = train_encoded.align(test_encoded, join='left', axis=1, fill_value=0)
-    
-    # Handle any remaining missing values
-    numeric_cols = train_encoded.select_dtypes(include=[np.number]).columns
-    train_encoded[numeric_cols] = train_encoded[numeric_cols].fillna(train_encoded[numeric_cols].median())
-    test_encoded[numeric_cols] = test_encoded[numeric_cols].fillna(train_encoded[numeric_cols].median())
-    
-    # Log feature engineering results
-    logger.info(f"Feature engineering completed. Train shape: {train_encoded.shape}, Test shape: {test_encoded.shape}")
-    logger.info(f"New features created: {set(train_encoded.columns) - set(train.columns)}")
-    
-    # Ensure no infinite values
-    train_encoded = train_encoded.replace([np.inf, -np.inf], np.nan)
-    test_encoded = test_encoded.replace([np.inf, -np.inf], np.nan)
-    
-    # Fill any remaining NaN values
-    train_encoded = train_encoded.fillna(0)
-    test_encoded = test_encoded.fillna(0)
-    
-    return train_encoded, test_encoded
+    return train_feat, test_feat

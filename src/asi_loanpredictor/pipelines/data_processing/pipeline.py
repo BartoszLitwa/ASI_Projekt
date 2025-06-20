@@ -4,12 +4,11 @@ from .nodes import feature_engineering
 
 
 def create_pipeline(**kwargs) -> Pipeline:
-    data_processing_pipeline = Pipeline([
+    return pipeline([
         node(
             func=feature_engineering,
-            inputs=["loan_train_cleaned", "loan_test_cleaned", "parameters"],
-            outputs=["loan_train_features", "loan_test_features"],
-            name="feature_engineering_node",
+            inputs=["train_cleaned", "test_cleaned"], 
+            outputs=["train_features", "test_features"],
+            name="feature_engineering",
         ),
     ])
-    return data_processing_pipeline

@@ -1,13 +1,31 @@
 {
-  "accuracy": 0.8895436507936508,
-  "precision": 0.5352757311899977,
-  "recall": 0.7735118567510889,
-  "f1": 0.6327109586329749,
-  "roc_auc": 0.9125034960055164,
-  "specificity": 0.9058166104839257,
-  "sensitivity": 0.7735118567510889,
-  "true_negatives": 40038,
-  "false_positives": 4163,
-  "false_negatives": 1404,
-  "true_positives": 4795
+  "threshold": 0.5545377990643613,
+  "roc_auc": 0.8695514954983959,
+  "accuracy": 0.891468253968254,
+  "precision_safe": 0.9299718022158574,
+  "recall_safe": 0.9476029954073437,
+  "f1_safe": 0.938704616763783,
+  "precision_risky": 0.5679910464465585,
+  "recall_risky": 0.4912082593966769,
+  "f1_risky": 0.5268166089965398,
+  "confusion_matrix": [
+    [
+      41885,
+      2316
+    ],
+    [
+      3154,
+      3045
+    ]
+  ],
+  "business_metrics": {
+    "total_loans": 50400,
+    "risky_loans": 6199,
+    "false_negatives": 3154,
+    "false_positives": 2316,
+    "risky_approval_rate": 0.5087917406033231,
+    "safe_rejection_rate": 0.052397004592656275,
+    "potential_loss_cr": 220.78,
+    "lost_revenue_cr": 23.16
+  }
 }

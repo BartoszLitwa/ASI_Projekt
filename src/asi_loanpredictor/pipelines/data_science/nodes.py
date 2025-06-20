@@ -1,143 +1,187 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, classification_report, confusion_matrix
-from sklearn.model_selection import cross_val_score, StratifiedKFold
-from sklearn.utils.validation import check_is_fitted
-import pickle
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, precision_recall_curve
+from sklearn.model_selection import cross_val_score
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
-def train_model(train: pd.DataFrame, parameters: dict):
+def train_model(train_features: pd.DataFrame):
     """
-    Train a RandomForestClassifier on the training data with improved hyperparameters.
-    Returns the trained model, features used, and training metrics.
+    Train a Random Forest model optimized for loan risk prediction.
+    Focus on balanced performance between precision and recall for risky loans.
     """
+    logger.info(f"Training model with data shape: {train_features.shape}")
+    
+    # Separate features and target
     target_col = 'Risk_Flag'
-    X = train.drop(columns=[target_col])
-    if 'Id' in X.columns:
-        X = X.drop(columns=['Id'])
+    if target_col not in train_features.columns:
+        raise KeyError(f"Target column '{target_col}' not found")
     
-    # Convert all boolean columns to int
-    for col in X.select_dtypes(include=['bool']).columns:
-        X[col] = X[col].astype(int)
+    X = train_features.drop(target_col, axis=1)
+    y = train_features[target_col]
     
-    y = train[target_col]
-    
-    # Log data info
-    logger.info(f"Training data shape: {X.shape}")
+    logger.info(f"Features shape: {X.shape}")
     logger.info(f"Target distribution: {y.value_counts().to_dict()}")
-    logger.info(f"Target balance: {y.mean():.3f}")
+    logger.info(f"Feature columns: {X.columns.tolist()}")
     
-    # Get model parameters
-    rf_params = parameters.get('random_forest', {})
-    
-    # Create and train model with better parameters
+    # Handle class imbalance with balanced Random Forest
+    # Slightly more conservative parameters for better precision
     model = RandomForestClassifier(
-        n_estimators=rf_params.get('n_estimators', 300),
-        max_depth=rf_params.get('max_depth', 15),
-        min_samples_split=rf_params.get('min_samples_split', 10),
-        min_samples_leaf=rf_params.get('min_samples_leaf', 4),
-        max_features=rf_params.get('max_features', 'sqrt'),
-        class_weight=rf_params.get('class_weight', 'balanced'),
-        random_state=rf_params.get('random_state', 42),
-        n_jobs=-1  # Use all available cores
+        n_estimators=250,           # More trees for stability
+        max_depth=12,               # Reduced depth to prevent overfitting
+        min_samples_split=30,       # Higher to prevent overfitting on small groups
+        min_samples_leaf=15,        # Ensure leaves have meaningful samples
+        max_features='sqrt',        # Use sqrt of features to reduce overfitting
+        class_weight='balanced_subsample',  # More aggressive class balancing
+        random_state=42,
+        n_jobs=-1                   # Use all available cores
     )
     
+    # Train the model
+    logger.info("Training Random Forest model...")
     model.fit(X, y)
     
-    # Verify the model is fitted
-    try:
-        check_is_fitted(model)
-    except Exception as e:
-        raise RuntimeError("Model fitting failed.") from e
-    
-    # Calculate feature importances
+    # Log feature importance
     feature_importance = pd.DataFrame({
         'feature': X.columns,
         'importance': model.feature_importances_
     }).sort_values('importance', ascending=False)
     
     logger.info("Top 10 most important features:")
-    logger.info(feature_importance.head(10).to_string())
+    for idx, row in feature_importance.head(10).iterrows():
+        logger.info(f"  {row['feature']}: {row['importance']:.4f}")
     
-    # Cross-validation scores
-    eval_params = parameters.get('evaluation', {})
-    cv_folds = eval_params.get('cv_folds', 5)
+    # Cross-validation to check model stability
+    cv_scores = cross_val_score(model, X, y, cv=5, scoring='roc_auc', n_jobs=-1)
+    logger.info(f"Cross-validation ROC-AUC: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
     
-    cv_scores = {}
-    kfold = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    # Find optimal threshold for business metrics
+    y_proba = model.predict_proba(X)[:, 1]
+    precision, recall, thresholds = precision_recall_curve(y, y_proba)
     
-    for metric in ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']:
-        scores = cross_val_score(model, X, y, cv=kfold, scoring=metric, n_jobs=-1)
-        cv_scores[f'cv_{metric}'] = {
-            'mean': scores.mean(),
-            'std': scores.std()
-        }
-        logger.info(f"CV {metric}: {scores.mean():.4f} (+/- {scores.std() * 2:.4f})")
+    # Business-focused threshold optimization
+    # We want to maximize F1 score but prioritize precision slightly
+    f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
     
-    return model, X.columns.tolist(), feature_importance, cv_scores
+    # Find threshold that maximizes F1 but with minimum 60% precision for risky loans
+    valid_indices = precision >= 0.60
+    if np.any(valid_indices):
+        valid_f1 = f1_scores[valid_indices]
+        best_idx = np.argmax(valid_f1)
+        optimal_threshold = thresholds[np.where(valid_indices)[0][best_idx]]
+    else:
+        # Fallback to best F1 score
+        optimal_threshold = thresholds[np.argmax(f1_scores)]
+    
+    logger.info(f"Optimal threshold for business use: {optimal_threshold:.4f}")
+    
+    return model, X.columns.tolist(), optimal_threshold
 
-def evaluate_model(model, features, test: pd.DataFrame, parameters: dict):
+def evaluate_model(model, test_features: pd.DataFrame, optimal_threshold=None):
     """
-    Evaluate the trained model on the test set with comprehensive metrics.
-    Returns detailed evaluation metrics.
+    Comprehensive model evaluation focusing on loan risk prediction metrics.
     """
+    logger.info(f"Evaluating model with test data shape: {test_features.shape}")
+    
+    # Separate features and target
     target_col = 'Risk_Flag'
-    
-    # Prepare test data
-    X_test = test[features].copy()
-    if 'Id' in X_test.columns:
-        X_test = X_test.drop(columns=['Id'])
-    
-    # Convert all boolean columns to int
-    for col in X_test.select_dtypes(include=['bool']).columns:
-        X_test[col] = X_test[col].astype(int)
-    
-    y_test = test[target_col]
+    X_test = test_features.drop(target_col, axis=1)
+    y_test = test_features[target_col]
     
     # Make predictions
-    y_pred = model.predict(X_test)
-    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    y_pred_proba = model.predict_proba(X_test)[:, 1]  # Probability of being risky
     
-    # Calculate comprehensive metrics
-    metrics = {
-        'accuracy': accuracy_score(y_test, y_pred),
-        'precision': precision_score(y_test, y_pred),
-        'recall': recall_score(y_test, y_pred),
-        'f1': f1_score(y_test, y_pred),
-        'roc_auc': roc_auc_score(y_test, y_pred_proba)
-    }
+    # Use optimal threshold if provided, otherwise use default 0.5
+    threshold = optimal_threshold if optimal_threshold is not None else 0.5
+    y_pred = (y_pred_proba >= threshold).astype(int)
     
-    # Log results
-    logger.info("Test Set Evaluation Results:")
-    for metric, value in metrics.items():
-        logger.info(f"{metric.upper()}: {value:.4f}")
+    logger.info(f"Using decision threshold: {threshold:.4f}")
+    
+    # Calculate metrics
+    roc_auc = roc_auc_score(y_test, y_pred_proba)
     
     # Detailed classification report
     class_report = classification_report(y_test, y_pred, output_dict=True)
-    conf_matrix = confusion_matrix(y_test, y_pred)
     
-    logger.info("Classification Report:")
+    # Log detailed results
+    logger.info("=== MODEL EVALUATION RESULTS ===")
+    logger.info(f"Decision Threshold: {threshold:.4f}")
+    logger.info(f"ROC-AUC Score: {roc_auc:.4f}")
+    logger.info(f"Overall Accuracy: {class_report['accuracy']:.4f}")
+    
+    logger.info("\nClass-wise Performance:")
+    logger.info(f"Class 0 (Safe Loans):")
+    logger.info(f"  Precision: {class_report['0']['precision']:.4f}")
+    logger.info(f"  Recall: {class_report['0']['recall']:.4f}")
+    logger.info(f"  F1-score: {class_report['0']['f1-score']:.4f}")
+    
+    logger.info(f"Class 1 (Risky Loans):")
+    logger.info(f"  Precision: {class_report['1']['precision']:.4f}")
+    logger.info(f"  Recall: {class_report['1']['recall']:.4f}")
+    logger.info(f"  F1-score: {class_report['1']['f1-score']:.4f}")
+    
+    # Confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    logger.info(f"\nConfusion Matrix:")
+    logger.info(f"  True Negatives: {cm[0,0]} | False Positives: {cm[0,1]}")
+    logger.info(f"  False Negatives: {cm[1,0]} | True Positives: {cm[1,1]}")
+    
+    # Calculate business metrics
+    total_loans = len(y_test)
+    risky_loans = (y_test == 1).sum()
+    safe_loans = (y_test == 0).sum()
+    
+    # How many risky loans would we approve? (False Negatives)
+    false_negatives = cm[1,0]
+    # How many safe loans would we reject? (False Positives)  
+    false_positives = cm[0,1]
+    
+    logger.info(f"\nBusiness Impact Analysis:")
+    logger.info(f"  Total loan applications: {total_loans}")
+    logger.info(f"  Actually risky loans: {risky_loans} ({risky_loans/total_loans:.1%})")
+    logger.info(f"  Risky loans we'd approve (BAD): {false_negatives} ({false_negatives/risky_loans:.1%} of risky)")
+    logger.info(f"  Safe loans we'd reject (LOST BUSINESS): {false_positives} ({false_positives/safe_loans:.1%} of safe)")
+    
+    # Calculate potential financial impact
+    avg_loan_amount = 1000000  # Assume 10L average loan
+    bad_loan_loss_rate = 0.7   # Assume 70% loss on bad loans
+    
+    potential_loss = false_negatives * avg_loan_amount * bad_loan_loss_rate
+    lost_revenue = false_positives * avg_loan_amount * 0.1  # Assume 10% profit margin
+    
+    logger.info(f"\nEstimated Financial Impact (for {total_loans} loans):")
+    logger.info(f"  Potential loss from bad loans: ₹{potential_loss/10000000:.1f} Cr")
+    logger.info(f"  Lost revenue from rejected good loans: ₹{lost_revenue/10000000:.1f} Cr")
+    
+    # Full classification report for detailed analysis
+    logger.info("\nDetailed Classification Report:")
     logger.info(classification_report(y_test, y_pred))
-    logger.info(f"Confusion Matrix:\n{conf_matrix}")
     
-    # Additional analysis for imbalanced dataset
-    tn, fp, fn, tp = conf_matrix.ravel()
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+    # Prepare evaluation results to save
+    evaluation_data = {
+        'threshold': float(threshold),
+        'roc_auc': float(roc_auc),
+        'accuracy': float(class_report['accuracy']),
+        'precision_safe': float(class_report['0']['precision']),
+        'recall_safe': float(class_report['0']['recall']),
+        'f1_safe': float(class_report['0']['f1-score']),
+        'precision_risky': float(class_report['1']['precision']),
+        'recall_risky': float(class_report['1']['recall']),
+        'f1_risky': float(class_report['1']['f1-score']),
+        'confusion_matrix': cm.tolist(),
+        'business_metrics': {
+            'total_loans': int(total_loans),
+            'risky_loans': int(risky_loans),
+            'false_negatives': int(false_negatives),
+            'false_positives': int(false_positives),
+            'risky_approval_rate': float(false_negatives/risky_loans),
+            'safe_rejection_rate': float(false_positives/safe_loans),
+            'potential_loss_cr': float(potential_loss/10000000),
+            'lost_revenue_cr': float(lost_revenue/10000000)
+        }
+    }
     
-    metrics.update({
-        'specificity': specificity,
-        'sensitivity': sensitivity,
-        'true_negatives': int(tn),
-        'false_positives': int(fp),
-        'false_negatives': int(fn),
-        'true_positives': int(tp)
-    })
-    
-    logger.info(f"Specificity (True Negative Rate): {specificity:.4f}")
-    logger.info(f"Sensitivity (True Positive Rate): {sensitivity:.4f}")
-    
-    return metrics
+    return evaluation_data

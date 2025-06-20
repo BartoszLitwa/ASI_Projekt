@@ -2,31 +2,32 @@ from typing import Tuple
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import KBinsDiscretizer, LabelEncoder
-from imblearn.over_sampling import SMOTE
-from kedro.io import DataCatalog
-from kedro.pipeline import node
 import logging
 
 logger = logging.getLogger(__name__)
 
 def split_train_test(data: pd.DataFrame, test_size: float = 0.2, random_state: int = 42):
     """
-    Split the raw data into train and test sets.
+    Split the raw data into train and test sets with stratification.
     """
-    logger.info(f"Splitting data with shape {data.shape}")
+    logger.info(f"Original data shape: {data.shape}")
+    logger.info(f"Columns: {data.columns.tolist()}")
     
-    target_col = 'Risk_Flag' if 'Risk_Flag' in data.columns else None
-    if target_col is None:
-        raise KeyError("'Risk_Flag' column not found in data")
+    # Check target distribution
+    target_col = 'Risk_Flag'
+    if target_col not in data.columns:
+        raise KeyError(f"Target column '{target_col}' not found in data")
     
-    logger.info(f"Target distribution: {data[target_col].value_counts().to_dict()}")
+    target_dist = data[target_col].value_counts()
+    logger.info(f"Target distribution: {target_dist.to_dict()}")
+    logger.info(f"Target balance: {data[target_col].mean():.3f}")
     
+    # Split data
     train, test = train_test_split(
         data, 
         test_size=test_size, 
         random_state=random_state, 
-        stratify=data[target_col] if target_col else None
+        stratify=data[target_col]
     )
     
     logger.info(f"Train shape: {train.shape}, Test shape: {test.shape}")
@@ -35,7 +36,7 @@ def split_train_test(data: pd.DataFrame, test_size: float = 0.2, random_state: i
 
 def clean_loan_data(train: pd.DataFrame, test: pd.DataFrame):
     """
-    Enhanced data cleaning that preserves more useful information.
+    Clean and prepare data with a simplified approach focused on core features.
     """
     logger.info(f"Starting data cleaning. Train: {train.shape}, Test: {test.shape}")
     
@@ -43,78 +44,106 @@ def clean_loan_data(train: pd.DataFrame, test: pd.DataFrame):
     train_clean = train.copy()
     test_clean = test.copy()
     
-    # Handle high-cardinality categorical variables intelligently
-    # Instead of dropping, we'll encode them properly
-    
-    # 1. Profession - group rare professions
-    if 'Profession' in train_clean.columns:
-        profession_counts = train_clean['Profession'].value_counts()
-        rare_professions = profession_counts[profession_counts < 50].index
-        
-        for df in [train_clean, test_clean]:
-            df['Profession'] = df['Profession'].replace(rare_professions, 'Other')
-            # Create profession risk encoding based on default rates
-        
-        # Calculate profession risk scores on training data
-        profession_risk = train_clean.groupby('Profession')['Risk_Flag'].mean()
-        
-        for df in [train_clean, test_clean]:
-            df['profession_risk_score'] = df['Profession'].map(profession_risk).fillna(profession_risk.mean())
-    
-    # 2. Geographic features - create state-level features
-    if 'STATE' in train_clean.columns:
-        state_risk = train_clean.groupby('STATE')['Risk_Flag'].mean()
-        state_income = train_clean.groupby('STATE')['Income'].mean()
-        
-        for df in [train_clean, test_clean]:
-            df['state_risk_score'] = df['STATE'].map(state_risk).fillna(state_risk.mean())
-            df['state_avg_income'] = df['STATE'].map(state_income).fillna(state_income.mean())
-            df['income_vs_state_avg'] = df['Income'] / df['state_avg_income']
-    
-    # 3. City features - create city risk scores for top cities
-    if 'CITY' in train_clean.columns:
-        city_counts = train_clean['CITY'].value_counts()
-        top_cities = city_counts.head(20).index
-        
-        city_risk = train_clean[train_clean['CITY'].isin(top_cities)].groupby('CITY')['Risk_Flag'].mean()
-        
-        for df in [train_clean, test_clean]:
-            df['is_top_city'] = df['CITY'].isin(top_cities).astype(int)
-            df['city_risk_score'] = df['CITY'].map(city_risk).fillna(city_risk.mean() if len(city_risk) > 0 else 0.5)
-    
-    # Now drop the original high-cardinality columns since we've extracted useful info
-    drop_cols = [col for col in ['Id', 'Profession', 'CITY', 'STATE'] if col in train_clean.columns]
-    train_clean = train_clean.drop(columns=drop_cols)
-    test_clean = test_clean.drop(columns=drop_cols)
-    
-    # Handle missing values more intelligently
+    # 1. Remove ID column (not predictive)
     for df in [train_clean, test_clean]:
-        # For categorical columns, use mode
-        for col in df.select_dtypes(include=['object']).columns:
-            if df[col].isnull().sum() > 0:
-                mode_value = df[col].mode()
-                fill_value = mode_value[0] if len(mode_value) > 0 else 'Unknown'
-                df[col] = df[col].fillna(fill_value)
+        if 'Id' in df.columns:
+            df.drop('Id', axis=1, inplace=True)
+    
+    # 2. Handle high-cardinality geographic features carefully
+    # Create aggregated risk scores ONLY from training data to avoid leakage
+    if 'STATE' in train_clean.columns:
+        # Calculate state-level statistics from training data only
+        state_stats = train_clean.groupby('STATE').agg({
+            'Risk_Flag': ['count', 'mean'],
+            'Income': 'median'
+        }).round(4)
         
-        # For numerical columns, use median for better robustness
-        for col in df.select_dtypes(include=['number']).columns:
+        state_stats.columns = ['state_count', 'state_risk_rate', 'state_median_income']
+        
+        # Only keep states with sufficient data (>=50 samples)
+        valid_states = state_stats[state_stats['state_count'] >= 50].index
+        
+        # Create state features
+        for df in [train_clean, test_clean]:
+            # Binary feature: is from a high-risk state?
+            high_risk_states = state_stats[state_stats['state_risk_rate'] > 0.15].index
+            df['is_high_risk_state'] = df['STATE'].isin(high_risk_states).astype(int)
+            
+            # Income relative to state median
+            df['state_income_ratio'] = df['Income'] / df['STATE'].map(state_stats['state_median_income']).fillna(6000000)
+    
+    # 3. Handle profession more intelligently
+    if 'Profession' in train_clean.columns:
+        # Group rare professions
+        prof_counts = train_clean['Profession'].value_counts()
+        common_profs = prof_counts[prof_counts >= 100].index
+        
+        for df in [train_clean, test_clean]:
+            df['profession_grouped'] = df['Profession'].where(
+                df['Profession'].isin(common_profs), 'Other'
+            )
+        
+        # Create profession risk encoding from training data only
+        prof_risk = train_clean.groupby('profession_grouped')['Risk_Flag'].mean()
+        
+        for df in [train_clean, test_clean]:
+            df['profession_risk_score'] = df['profession_grouped'].map(prof_risk).fillna(prof_risk.mean())
+    
+    # 4. Handle city more simply
+    if 'CITY' in train_clean.columns:
+        # Just mark top 10 cities, drop the rest
+        top_cities = train_clean['CITY'].value_counts().head(10).index
+        for df in [train_clean, test_clean]:
+            df['is_major_city'] = df['CITY'].isin(top_cities).astype(int)
+    
+    # 5. Drop the original high-cardinality columns
+    drop_cols = ['STATE', 'CITY', 'Profession', 'profession_grouped']
+    for df in [train_clean, test_clean]:
+        df.drop([col for col in drop_cols if col in df.columns], axis=1, inplace=True)
+    
+    # 6. Handle missing values intelligently
+    for df in [train_clean, test_clean]:
+        # Categorical columns
+        cat_cols = df.select_dtypes(include=['object']).columns
+        for col in cat_cols:
+            mode_val = df[col].mode()
+            if len(mode_val) > 0:
+                df[col].fillna(mode_val[0], inplace=True)
+            else:
+                df[col].fillna('Unknown', inplace=True)
+        
+        # Numerical columns - use median (more robust than mean)
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        num_cols = num_cols.drop('Risk_Flag', errors='ignore')  # Don't fill target
+        for col in num_cols:
             if df[col].isnull().sum() > 0:
-                df[col] = df[col].fillna(df[col].median())
+                median_val = df[col].median()
+                df[col].fillna(median_val, inplace=True)
     
-    # Handle specific categorical columns with better encoding
-    cat_cols = [col for col in ['Married/Single', 'House_Ownership', 'Car_Ownership'] if col in train_clean.columns]
+    # 7. One-hot encode categorical variables
+    categorical_features = ['Married/Single', 'House_Ownership', 'Car_Ownership']
+    categorical_features = [col for col in categorical_features if col in train_clean.columns]
     
-    # One-hot encode key categorical variables
-    train_encoded = pd.get_dummies(train_clean, columns=cat_cols, drop_first=True)
-    test_encoded = pd.get_dummies(test_clean, columns=cat_cols, drop_first=True)
+    if categorical_features:
+        train_encoded = pd.get_dummies(train_clean, columns=categorical_features, drop_first=True)
+        test_encoded = pd.get_dummies(test_clean, columns=categorical_features, drop_first=True)
+        
+        # Ensure both have the same columns
+        train_encoded, test_encoded = train_encoded.align(test_encoded, join='left', axis=1, fill_value=0)
+    else:
+        train_encoded, test_encoded = train_clean, test_clean
     
-    # Align columns between train and test (important for consistency)
-    train_encoded, test_encoded = train_encoded.align(test_encoded, join='left', axis=1, fill_value=0)
+    # 8. Final validation
+    logger.info(f"Final shapes - Train: {train_encoded.shape}, Test: {test_encoded.shape}")
+    logger.info(f"Missing values - Train: {train_encoded.isnull().sum().sum()}, Test: {test_encoded.isnull().sum().sum()}")
     
-    # Data quality checks
-    logger.info(f"After cleaning - Train: {train_encoded.shape}, Test: {test_encoded.shape}")
-    logger.info(f"Missing values in train: {train_encoded.isnull().sum().sum()}")
-    logger.info(f"Missing values in test: {test_encoded.isnull().sum().sum()}")
+    # Check for any infinite values
+    train_encoded.replace([np.inf, -np.inf], np.nan, inplace=True)
+    test_encoded.replace([np.inf, -np.inf], np.nan, inplace=True)
+    
+    # Fill any remaining NaNs
+    train_encoded.fillna(0, inplace=True)
+    test_encoded.fillna(0, inplace=True)
     
     return train_encoded, test_encoded
 
