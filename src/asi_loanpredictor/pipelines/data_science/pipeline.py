@@ -8,14 +8,14 @@ def create_pipeline(**kwargs) -> Pipeline:
         [
             node(
                 func=train_model,
-                inputs="loan_train_features",
-                outputs=["loan_model", "model_features"],
+                inputs=["loan_train_features", "parameters"],
+                outputs=["loan_model", "model_features", "feature_importance", "cv_scores"],
                 name="train_model_node",
             ),
             node(
                 func=evaluate_model,
-                inputs=["loan_model", "model_features", "loan_test_features"],
-                outputs="model_accuracy",
+                inputs=["loan_model", "model_features", "loan_test_features", "parameters"],
+                outputs="model_metrics",
                 name="evaluate_model_node",
             ),
         ]

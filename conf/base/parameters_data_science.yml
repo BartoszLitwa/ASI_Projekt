@@ -1,12 +1,29 @@
 model_options:
   test_size: 0.2
-  random_state: 3
-  features:
-    - engines
-    - passenger_capacity
-    - crew
-    - d_check_complete
-    - moon_clearance_complete
-    - iata_approved
-    - company_rating
-    - review_scores_rating
+  random_state: 42
+  
+# Random Forest parameters for better performance
+random_forest:
+  n_estimators: 300
+  max_depth: 15
+  min_samples_split: 10
+  min_samples_leaf: 4
+  max_features: 'sqrt'
+  class_weight: 'balanced'
+  random_state: 42
+
+# Evaluation metrics
+evaluation:
+  cv_folds: 5
+  scoring_metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - roc_auc
+
+# Feature engineering parameters
+feature_engineering:
+  income_bins: [0, 3000000, 6000000, 10000000, 15000000, 99999999]
+  age_bins: [18, 30, 45, 60, 100]
+  experience_bins: [0, 2, 5, 10, 20, 50]
