@@ -1,31 +1,33 @@
 {
-  "threshold": 0.5545377990643613,
-  "roc_auc": 0.8695514954983959,
-  "accuracy": 0.891468253968254,
-  "precision_safe": 0.9299718022158574,
-  "recall_safe": 0.9476029954073437,
-  "f1_safe": 0.938704616763783,
-  "precision_risky": 0.5679910464465585,
-  "recall_risky": 0.4912082593966769,
-  "f1_risky": 0.5268166089965398,
+  "threshold": 0.5339325439703139,
+  "roc_auc": 0.7494525845154543,
+  "accuracy": 0.8319953005678481,
+  "precision_no_default": 0.9174640875145591,
+  "recall_no_default": 0.8899842708079487,
+  "f1_no_default": 0.9035152823696107,
+  "precision_default": 0.31813812989152823,
+  "recall_default": 0.39065924801888385,
+  "f1_default": 0.3506886635386711,
   "confusion_matrix": [
     [
-      41885,
-      2316
+      40173,
+      4966
     ],
     [
-      3154,
-      3045
+      3614,
+      2317
     ]
   ],
   "business_metrics": {
-    "total_loans": 50400,
-    "risky_loans": 6199,
-    "false_negatives": 3154,
-    "false_positives": 2316,
-    "risky_approval_rate": 0.5087917406033231,
-    "safe_rejection_rate": 0.052397004592656275,
-    "potential_loss_cr": 220.78,
-    "lost_revenue_cr": 23.16
+    "total_loans": 51070,
+    "actual_defaults": 5931,
+    "false_negatives": 3614,
+    "false_positives": 4966,
+    "default_detection_rate": 0.39065924801888385,
+    "false_alarm_rate": 0.11001572919205121,
+    "avg_loan_amount": 127798.53943606814,
+    "potential_loss": 369491137.21756023,
+    "lost_revenue": 76157705.62074172,
+    "net_impact": 293333431.5968185
   }
 }

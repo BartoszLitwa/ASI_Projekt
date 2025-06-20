@@ -92,6 +92,10 @@ model_features:
   type: pickle.PickleDataset
   filepath: data/06_models/model_features.pkl
 
+optimal_threshold:
+  type: pickle.PickleDataset
+  filepath: data/06_models/optimal_threshold.pkl
+
 # Evaluation outputs
 model_metrics:
   type: json.JSONDataset
